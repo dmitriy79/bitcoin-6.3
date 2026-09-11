@@ -1,18 +1,30 @@
-// Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2012 The Bitcoin developers
-// Distributed under the MIT/X11 software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef BITCOIN_UTIL_H
 #define BITCOIN_UTIL_H
+#ifdef WIN32
+  #include <pthread.h>
+  #define _PID_T_DEFINED
+  // Перехитрим старый typedef: макрос заменит имя типа, 
+  // и старая строка превратится в безобидный 'typedef void* __bypassed_pthread_t;'
+  #define pthread_t __bypassed_pthread_t
+  #define pthread_mutex_t __bypassed_pthread_mutex_t
+  #define pthread_cond_t __bypassed_pthread_cond_t
+#endif
+
+// ДЛЯ СОВМЕСТИМОСТИ С СОВРЕМЕННЫМ MINGW
+#ifdef WIN32
+#include <pthread.h>
+#define _PID_T_DEFINED
+#endif
 
 #include "uint256.h"
+
 
 #ifndef WIN32
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #else
-typedef int pid_t; /* define for windows compatiblity */
+//typedef int pid_t; /* define for windows compatiblity */
 #endif
 #include <map>
 #include <vector>
@@ -63,11 +75,7 @@ static const int64 CENT = 1000000;
 #define PRI64x  "llx"
 #endif
 #endif
-
-// This is needed because the foreach macro can't get over the comma in pair<t1, t2>
 #define PAIRTYPE(t1, t2)    std::pair<t1, t2>
-
-// Align by increasing pointer, must have extra space at end of buffer
 template <size_t nBytes, typename T>
 T* alignup(T* p)
 {
@@ -97,20 +105,9 @@ T* alignup(T* p)
 #define MAX_PATH            1024
 inline void Sleep(int64 n)
 {
-    /*Boost has a year 2038 problem— if the request sleep time is past epoch+2^31 seconds the sleep returns instantly.
-      So we clamp our sleeps here to 10 years and hope that boost is fixed by 2028.*/
     boost::thread::sleep(boost::get_system_time() + boost::posix_time::milliseconds(n>315576000000LL?315576000000LL:n));
 }
 #endif
-
-
-
-
-
-
-
-
-
 extern std::map<std::string, std::string> mapArgs;
 extern std::map<std::string, std::vector<std::string> > mapMultiArgs;
 extern bool fDebug;
@@ -130,11 +127,6 @@ void RandAddSeed();
 void RandAddSeedPerfmon();
 int OutputDebugStringF(const char* pszFormat, ...);
 int my_snprintf(char* buffer, size_t limit, const char* format, ...);
-
-/* It is not allowed to use va_start with a pass-by-reference argument.
-   (C++ standard, 18.7, paragraph 3). Use a dummy argument to work around this, and use a
-   macro to keep similar semantics.
-*/
 std::string real_strprintf(const std::string &format, int dummy, ...);
 #define strprintf(format, ...) real_strprintf(format, 0, __VA_ARGS__)
 
@@ -175,21 +167,7 @@ int64 GetAdjustedTime();
 std::string FormatFullVersion();
 std::string FormatSubVersion(const std::string& name, int nClientVersion, const std::vector<std::string>& comments);
 void AddTimeData(const CNetAddr& ip, int64 nTime);
-
-
-
-
-
-
-
-
-
-
-
-/** Wrapped boost mutex: supports recursive locking, but no waiting  */
 typedef boost::interprocess::interprocess_recursive_mutex CCriticalSection;
-
-/** Wrapped boost mutex: supports waiting but not recursive locking */
 typedef boost::interprocess::interprocess_mutex CWaitableCriticalSection;
 
 #ifdef DEBUG_LOCKORDER
@@ -458,61 +436,12 @@ inline bool IsSwitchChar(char c)
     return c == '-';
 #endif
 }
-
-/**
- * Return string argument or default value
- *
- * @param strArg Argument to get (e.g. "-foo")
- * @param default (e.g. "1")
- * @return command-line argument or default value
- */
 std::string GetArg(const std::string& strArg, const std::string& strDefault);
-
-/**
- * Return integer argument or default value
- *
- * @param strArg Argument to get (e.g. "-foo")
- * @param default (e.g. 1)
- * @return command-line argument (0 if invalid number) or default value
- */
 int64 GetArg(const std::string& strArg, int64 nDefault);
-
-/**
- * Return boolean argument or default value
- *
- * @param strArg Argument to get (e.g. "-foo")
- * @param default (true or false)
- * @return command-line argument or default value
- */
 bool GetBoolArg(const std::string& strArg, bool fDefault=false);
-
-/**
- * Set an argument if it doesn't already have a value
- *
- * @param strArg Argument to set (e.g. "-foo")
- * @param strValue Value (e.g. "1")
- * @return true if argument gets set, false if it already had a value
- */
 bool SoftSetArg(const std::string& strArg, const std::string& strValue);
-
-/**
- * Set a boolean argument if it doesn't already have a value
- *
- * @param strArg Argument to set (e.g. "-foo")
- * @param fValue Value (e.g. false)
- * @return true if argument gets set, false if it already had a value
- */
 bool SoftSetBoolArg(const std::string& strArg, bool fValue);
 
-
-
-
-
-
-
-
-
-// Randomize the stack to help protect against buffer overrun exploits
 #define IMPLEMENT_RANDOMIZE_STACK(ThreadFn)     \
     {                                           \
         static char nLoops;                     \
@@ -574,9 +503,6 @@ inline uint256 Hash(const T1 p1begin, const T1 p1end,
 template<typename T>
 uint256 SerializeHash(const T& obj, int nType=SER_GETHASH, int nVersion=PROTOCOL_VERSION)
 {
-    // Most of the time is spent allocating and deallocating CDataStream's
-    // buffer.  If this ever needs to be optimized further, make a CStaticStream
-    // class with its buffer on the stack.
     CDataStream ss(nType, nVersion);
     ss.reserve(10000);
     ss << obj;
@@ -592,10 +518,6 @@ inline uint160 Hash160(const std::vector<unsigned char>& vch)
     return hash2;
 }
 
-
-/** Median filter over a stream of values. 
- * Returns the median of the last N numbers
- */
 template <typename T> class CMedianFilter
 {
 private:
@@ -649,17 +571,6 @@ public:
     }
 };
 
-
-
-
-
-
-
-
-
-
-// Note: It turns out we might have been able to use boost::thread
-// by using TerminateThread(boost::thread.native_handle(), 0);
 #ifdef WIN32
 typedef HANDLE pthread_t;
 
@@ -716,8 +627,6 @@ inline pthread_t CreateThread(void(*pfn)(void*), void* parg, bool fWantHandle=fa
 
 inline void SetThreadPriority(int nPriority)
 {
-    // It's unclear if it's even possible to change thread priorities on Linux,
-    // but we really and truly need it for the generation threads.
 #ifdef PRIO_THREAD
     setpriority(PRIO_THREAD, 0, nPriority);
 #else
@@ -730,11 +639,6 @@ inline void ExitThread(size_t nExitCode)
     pthread_exit((void*)nExitCode);
 }
 #endif
-
-
-
-
-
 inline uint32_t ByteReverse(uint32_t value)
 {
     value = ((value & 0xFF00FF00) >> 8) | ((value & 0x00FF00FF) << 8);
