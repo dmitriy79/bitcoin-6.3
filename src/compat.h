@@ -25,7 +25,14 @@
 #include <ifaddrs.h>
 #endif
 
+#ifndef WIN32
 typedef u_int SOCKET;
+#else
+  #ifndef _WINSOCK2API_
+  typedef u_int SOCKET;
+  #endif
+#endif
+
 #ifdef WIN32
 #define MSG_NOSIGNAL        0
 #define MSG_DONTWAIT        0
